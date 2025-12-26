@@ -3,7 +3,7 @@
 #if defined(ARDUINO_ARCH_RENESAS)
 // Use aggressive tuning on Renesas RA (e.g., UNO R4 WiFi/Minima) to squeeze more hashrate
 #pragma GCC optimize ("Ofast","unroll-loops","tree-vectorize","rename-registers","inline-functions")
-#define DUCO_HOT_ATTR __attribute__((hot, flatten, optimize("O3")))
+#define DUCO_HOT_ATTR __attribute__((hot, flatten))
 #else
 #pragma GCC optimize ("-Ofast")
 #define DUCO_HOT_ATTR
@@ -11,54 +11,20 @@
 
 #define sha1_rotl(bits,word)     (((word) << (bits)) | ((word) >> (32 - (bits))))
 
-// Fully unrolled SHA-1 round macros for maximum performance
-// Round type 1: rounds 0-19 - f = (b & c) | ((~b) & d)
-#define SHA1_R1(a,b,c,d,e,w) \
-	e += sha1_rotl(5,a) + ((b & c) | ((~b) & d)) + 0x5a827999 + w; \
-	b = sha1_rotl(30,b);
-
-// Round type 2: rounds 20-39 - f = b ^ c ^ d
-#define SHA1_R2(a,b,c,d,e,w) \
-	e += sha1_rotl(5,a) + (b ^ c ^ d) + 0x6ed9eba1 + w; \
-	b = sha1_rotl(30,b);
-
-// Round type 3: rounds 40-59 - f = (b & c) | (b & d) | (c & d)
-#define SHA1_R3(a,b,c,d,e,w) \
-	e += sha1_rotl(5,a) + ((b & c) | (b & d) | (c & d)) + 0x8f1bbcdc + w; \
-	b = sha1_rotl(30,b);
-
-// Round type 4: rounds 60-79 - f = b ^ c ^ d
-#define SHA1_R4(a,b,c,d,e,w) \
-	e += sha1_rotl(5,a) + (b ^ c ^ d) + 0xca62c1d6 + w; \
-	b = sha1_rotl(30,b);
-
-// Word expansion macro
-#define SHA1_EXPAND(w,i) (w[i&15] = sha1_rotl(1, w[(i-3)&15] ^ w[(i-8)&15] ^ w[(i-14)&15] ^ w[i&15]))
-
 DUCO_HOT_ATTR void duco_hash_block(duco_hash_state_t * hasher) {
 	// NOTE: keeping this static improves performance quite a lot
 	static uint32_t w[16];
 
-	// Load base words (first 10 words are constant per job)
-	w[0] = hasher->base_words[0];
-	w[1] = hasher->base_words[1];
-	w[2] = hasher->base_words[2];
-	w[3] = hasher->base_words[3];
-	w[4] = hasher->base_words[4];
-	w[5] = hasher->base_words[5];
-	w[6] = hasher->base_words[6];
-	w[7] = hasher->base_words[7];
-	w[8] = hasher->base_words[8];
-	w[9] = hasher->base_words[9];
+	for (uint8_t i = 0; i < 10; i++) {
+		w[i] = hasher->base_words[i];
+	}
 
-	// Load remaining 6 words from buffer (contains nonce)
-	uint8_t const * buf = hasher->buffer;
-	w[10] = (uint32_t(buf[40]) << 24) | (uint32_t(buf[41]) << 16) | (uint32_t(buf[42]) << 8) | uint32_t(buf[43]);
-	w[11] = (uint32_t(buf[44]) << 24) | (uint32_t(buf[45]) << 16) | (uint32_t(buf[46]) << 8) | uint32_t(buf[47]);
-	w[12] = (uint32_t(buf[48]) << 24) | (uint32_t(buf[49]) << 16) | (uint32_t(buf[50]) << 8) | uint32_t(buf[51]);
-	w[13] = (uint32_t(buf[52]) << 24) | (uint32_t(buf[53]) << 16) | (uint32_t(buf[54]) << 8) | uint32_t(buf[55]);
-	w[14] = (uint32_t(buf[56]) << 24) | (uint32_t(buf[57]) << 16) | (uint32_t(buf[58]) << 8) | uint32_t(buf[59]);
-	w[15] = (uint32_t(buf[60]) << 24) | (uint32_t(buf[61]) << 16) | (uint32_t(buf[62]) << 8) | uint32_t(buf[63]);
+	for (uint8_t i = 10, i4 = 40; i < 16; i++, i4 += 4) {
+		w[i] = (uint32_t(hasher->buffer[i4]) << 24) |
+			(uint32_t(hasher->buffer[i4 + 1]) << 16) |
+			(uint32_t(hasher->buffer[i4 + 2]) << 8) |
+			(uint32_t(hasher->buffer[i4 + 3]));
+	}
 
 	uint32_t a = hasher->tempState[0];
 	uint32_t b = hasher->tempState[1];
@@ -66,48 +32,32 @@ DUCO_HOT_ATTR void duco_hash_block(duco_hash_state_t * hasher) {
 	uint32_t d = hasher->tempState[3];
 	uint32_t e = hasher->tempState[4];
 
-	// Rounds 10-19 (type 1) - first 6 use direct words, rest need expansion
-	SHA1_R1(a,b,c,d,e, w[10]); SHA1_R1(e,a,b,c,d, w[11]);
-	SHA1_R1(d,e,a,b,c, w[12]); SHA1_R1(c,d,e,a,b, w[13]);
-	SHA1_R1(b,c,d,e,a, w[14]); SHA1_R1(a,b,c,d,e, w[15]);
-	SHA1_R1(e,a,b,c,d, SHA1_EXPAND(w,16)); SHA1_R1(d,e,a,b,c, SHA1_EXPAND(w,17));
-	SHA1_R1(c,d,e,a,b, SHA1_EXPAND(w,18)); SHA1_R1(b,c,d,e,a, SHA1_EXPAND(w,19));
+	for (uint8_t i = 10; i < 80; i++) {
+		if (i >= 16) {
+			w[i & 15] = sha1_rotl(1, w[(i-3) & 15] ^ w[(i-8) & 15] ^ w[(i-14) & 15] ^ w[(i-16) & 15]);
+		}
 
-	// Rounds 20-39 (type 2)
-	SHA1_R2(a,b,c,d,e, SHA1_EXPAND(w,20)); SHA1_R2(e,a,b,c,d, SHA1_EXPAND(w,21));
-	SHA1_R2(d,e,a,b,c, SHA1_EXPAND(w,22)); SHA1_R2(c,d,e,a,b, SHA1_EXPAND(w,23));
-	SHA1_R2(b,c,d,e,a, SHA1_EXPAND(w,24)); SHA1_R2(a,b,c,d,e, SHA1_EXPAND(w,25));
-	SHA1_R2(e,a,b,c,d, SHA1_EXPAND(w,26)); SHA1_R2(d,e,a,b,c, SHA1_EXPAND(w,27));
-	SHA1_R2(c,d,e,a,b, SHA1_EXPAND(w,28)); SHA1_R2(b,c,d,e,a, SHA1_EXPAND(w,29));
-	SHA1_R2(a,b,c,d,e, SHA1_EXPAND(w,30)); SHA1_R2(e,a,b,c,d, SHA1_EXPAND(w,31));
-	SHA1_R2(d,e,a,b,c, SHA1_EXPAND(w,32)); SHA1_R2(c,d,e,a,b, SHA1_EXPAND(w,33));
-	SHA1_R2(b,c,d,e,a, SHA1_EXPAND(w,34)); SHA1_R2(a,b,c,d,e, SHA1_EXPAND(w,35));
-	SHA1_R2(e,a,b,c,d, SHA1_EXPAND(w,36)); SHA1_R2(d,e,a,b,c, SHA1_EXPAND(w,37));
-	SHA1_R2(c,d,e,a,b, SHA1_EXPAND(w,38)); SHA1_R2(b,c,d,e,a, SHA1_EXPAND(w,39));
+		uint32_t temp = sha1_rotl(5, a) + e + w[i & 15];
+		if (i < 20) {
+			temp += (b & c) | ((~b) & d);
+			temp += 0x5a827999;
+		} else if(i < 40) {
+			temp += b ^ c ^ d;
+			temp += 0x6ed9eba1;
+		} else if(i < 60) {
+			temp += (b & c) | (b & d) | (c & d);
+			temp += 0x8f1bbcdc;
+		} else {
+			temp += b ^ c ^ d;
+			temp += 0xca62c1d6;
+		}
 
-	// Rounds 40-59 (type 3)
-	SHA1_R3(a,b,c,d,e, SHA1_EXPAND(w,40)); SHA1_R3(e,a,b,c,d, SHA1_EXPAND(w,41));
-	SHA1_R3(d,e,a,b,c, SHA1_EXPAND(w,42)); SHA1_R3(c,d,e,a,b, SHA1_EXPAND(w,43));
-	SHA1_R3(b,c,d,e,a, SHA1_EXPAND(w,44)); SHA1_R3(a,b,c,d,e, SHA1_EXPAND(w,45));
-	SHA1_R3(e,a,b,c,d, SHA1_EXPAND(w,46)); SHA1_R3(d,e,a,b,c, SHA1_EXPAND(w,47));
-	SHA1_R3(c,d,e,a,b, SHA1_EXPAND(w,48)); SHA1_R3(b,c,d,e,a, SHA1_EXPAND(w,49));
-	SHA1_R3(a,b,c,d,e, SHA1_EXPAND(w,50)); SHA1_R3(e,a,b,c,d, SHA1_EXPAND(w,51));
-	SHA1_R3(d,e,a,b,c, SHA1_EXPAND(w,52)); SHA1_R3(c,d,e,a,b, SHA1_EXPAND(w,53));
-	SHA1_R3(b,c,d,e,a, SHA1_EXPAND(w,54)); SHA1_R3(a,b,c,d,e, SHA1_EXPAND(w,55));
-	SHA1_R3(e,a,b,c,d, SHA1_EXPAND(w,56)); SHA1_R3(d,e,a,b,c, SHA1_EXPAND(w,57));
-	SHA1_R3(c,d,e,a,b, SHA1_EXPAND(w,58)); SHA1_R3(b,c,d,e,a, SHA1_EXPAND(w,59));
-
-	// Rounds 60-79 (type 4)
-	SHA1_R4(a,b,c,d,e, SHA1_EXPAND(w,60)); SHA1_R4(e,a,b,c,d, SHA1_EXPAND(w,61));
-	SHA1_R4(d,e,a,b,c, SHA1_EXPAND(w,62)); SHA1_R4(c,d,e,a,b, SHA1_EXPAND(w,63));
-	SHA1_R4(b,c,d,e,a, SHA1_EXPAND(w,64)); SHA1_R4(a,b,c,d,e, SHA1_EXPAND(w,65));
-	SHA1_R4(e,a,b,c,d, SHA1_EXPAND(w,66)); SHA1_R4(d,e,a,b,c, SHA1_EXPAND(w,67));
-	SHA1_R4(c,d,e,a,b, SHA1_EXPAND(w,68)); SHA1_R4(b,c,d,e,a, SHA1_EXPAND(w,69));
-	SHA1_R4(a,b,c,d,e, SHA1_EXPAND(w,70)); SHA1_R4(e,a,b,c,d, SHA1_EXPAND(w,71));
-	SHA1_R4(d,e,a,b,c, SHA1_EXPAND(w,72)); SHA1_R4(c,d,e,a,b, SHA1_EXPAND(w,73));
-	SHA1_R4(b,c,d,e,a, SHA1_EXPAND(w,74)); SHA1_R4(a,b,c,d,e, SHA1_EXPAND(w,75));
-	SHA1_R4(e,a,b,c,d, SHA1_EXPAND(w,76)); SHA1_R4(d,e,a,b,c, SHA1_EXPAND(w,77));
-	SHA1_R4(c,d,e,a,b, SHA1_EXPAND(w,78)); SHA1_R4(b,c,d,e,a, SHA1_EXPAND(w,79));
+		e = d;
+		d = c;
+		c = sha1_rotl(30, b);
+		b = a;
+		a = temp;
+	}
 
 	a += 0x67452301;
 	b += 0xefcdab89;
@@ -115,16 +65,6 @@ DUCO_HOT_ATTR void duco_hash_block(duco_hash_state_t * hasher) {
 	d += 0x10325476;
 	e += 0xc3d2e1f0;
 
-	// Store as 32-bit words directly for fast comparison on ARM
-	// Use big-endian byte swap for SHA-1 compatibility
-#if defined(ARDUINO_ARCH_RENESAS) || defined(__ARM_ARCH)
-	// ARM has __REV intrinsic for fast byte swap, but we inline it for portability
-	hasher->result32[0] = __builtin_bswap32(a);
-	hasher->result32[1] = __builtin_bswap32(b);
-	hasher->result32[2] = __builtin_bswap32(c);
-	hasher->result32[3] = __builtin_bswap32(d);
-	hasher->result32[4] = __builtin_bswap32(e);
-#else
 	hasher->result[0 * 4 + 0] = a >> 24;
 	hasher->result[0 * 4 + 1] = a >> 16;
 	hasher->result[0 * 4 + 2] = a >> 8;
@@ -145,7 +85,6 @@ DUCO_HOT_ATTR void duco_hash_block(duco_hash_state_t * hasher) {
 	hasher->result[4 * 4 + 1] = e >> 16;
 	hasher->result[4 * 4 + 2] = e >> 8;
 	hasher->result[4 * 4 + 3] = e;
-#endif
 }
 
 void duco_hash_init(duco_hash_state_t * hasher, char const * prevHash) {
@@ -231,11 +170,4 @@ DUCO_HOT_ATTR uint8_t const * duco_hash_try_nonce(duco_hash_state_t * hasher, ch
 	duco_hash_block(hasher);
 
 	return hasher->result;
-}
-
-DUCO_HOT_ATTR uint32_t const * duco_hash_try_nonce32(duco_hash_state_t * hasher, char const * nonce, uint8_t nonce_len) {
-	duco_hash_set_nonce(hasher, nonce, nonce_len);
-	duco_hash_block(hasher);
-
-	return hasher->result32;
 }
