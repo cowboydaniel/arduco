@@ -23,6 +23,13 @@ for default settings use -O0. -O may be a good tradeoff between both */
 #endif
 #define SEP_TOKEN ","
 #define END_TOKEN "\n"
+#if defined(ARDUINO_ARCH_RENESAS)
+#define DUCO_PROFILE "RENESAS"
+#elif defined(ARDUINO_ARCH_AVR) || defined(ARDUINO_ARCH_MEGAAVR)
+#define DUCO_PROFILE "AVR"
+#else
+#define DUCO_PROFILE "GENERIC"
+#endif
 #ifndef DUCO_SERIAL_BAUD
 #define DUCO_SERIAL_BAUD 115200
 #endif
@@ -63,6 +70,9 @@ void print_startup_info() {
   Serial.print(F(" | F_CPU: "));
   Serial.print(F_CPU / 1000000);
   Serial.println(F(" MHz"));
+
+  Serial.print(F("Profile: "));
+  Serial.println(F(DUCO_PROFILE));
 }
 
 void setup() {
