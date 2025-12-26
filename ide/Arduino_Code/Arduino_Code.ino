@@ -197,11 +197,11 @@ uintDiff ducos1a_mine(char const * prevBlockHash, uint8_t const * target, uintDi
 #if !defined(ARDUINO_ARCH_AVR) && !defined(ARDUINO_ARCH_MEGAAVR)
 
 // Incrementing nonce string state - avoids division per iteration
-struct nonce_str_state_t {
+typedef struct {
   char str[12];      // "0" to "4294967295" + null
   uint8_t len;       // Current string length
   uint8_t pos;       // Position of rightmost digit
-};
+} nonce_str_state_t;
 
 static inline void nonce_str_init(nonce_str_state_t * s) {
   s->str[0] = '0';
