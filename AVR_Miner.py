@@ -1100,21 +1100,19 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
             break
 
         start_diff = "AVR"
-        # Prioritize dedicated Renesas profile for R4 WiFi/Minima-class boards.
-        # If the Renesas profile fails to deliver a valid job, we'll fall back
-        # to the previous DUE profile below.
+        # Detect board type based on hashrate
+        # RENESAS boards use DUE difficulty (RENESAS profile has 200000 starting diff)
         if hashrate_test > 9000:
-            start_diff = "RENESAS"
+            start_diff = "RENESAS"  # Display name
         elif hashrate_test > 4000:
             start_diff = "DUE"
-        elif hashrate_test > 1200:
-            start_diff = "RENESAS"
         elif hashrate_test > 550:
             start_diff = "ARM"
         elif hashrate_test > 380:
             start_diff = "MEGA"
 
-        renesas_failures = 0
+        # RENESAS boards request DUE difficulty (same mining settings, reasonable diff)
+        request_diff = "DUE" if start_diff == "RENESAS" else start_diff
         pretty_print('sys' + port_num(com), 
                     get_string('hashrate_test') 
                     + get_prefix("H/s", hashrate_test, 2)
@@ -1135,7 +1133,7 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
                             + Settings.SEPARATOR
                             + str(username)
                             + Settings.SEPARATOR
-                            + start_diff
+                            + request_diff
                             + Settings.SEPARATOR
                             + str(key)
                 )
@@ -1147,31 +1145,16 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
                 except Exception:
                     pretty_print("sys" + port_num(com),
                                  f" Node message: {job[1]}", "warning")
-                    # Prefer keeping the Renesas profile for higher hashrate;
-                    # only fall back to DUE after a few consecutive failures.
-                    if start_diff == "RENESAS":
-                        renesas_failures += 1
-                        if renesas_failures >= 3:
-                            start_diff = "DUE"
-                            pretty_print("sys" + port_num(com),
-                                         "Renesas profile unavailable after 3 retries, switching to DUE",
-                                         "warning")
-                            sleep(1)
-                            continue
-                        sleep(1)
-                        continue
                     sleep(3)
                     continue
 
                 estimated_job_time = (diff * 100) / max(thread_hashrate, 1)
 
-                # Cap difficulty if it would take too long (keep RENESAS profile)
-                # This allows the board to search a smaller nonce range while
-                # the server adjusts difficulty over time
+                # Cap difficulty if it would take too long
                 max_diff = int(thread_hashrate * Settings.MAX_AVR_TIMEOUT / 100)
                 if diff > max_diff:
                     pretty_print("sys" + port_num(com),
-                                 f"Capping RENESAS difficulty from {diff} to {max_diff} "
+                                 f"Capping difficulty from {diff} to {max_diff} "
                                  + f"(was {round(estimated_job_time)}s, now ~{Settings.MAX_AVR_TIMEOUT}s)",
                                  "warning")
                     diff = max_diff
@@ -1233,7 +1216,6 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
                 hashrate = mean(hashrate_mean)
                 hashrate_list[threadid] = hashrate
                 total_hashrate = sum(hashrate_list)
-                renesas_failures = 0
             except Exception as e:
                 pretty_print('sys' + port_num(com),
                              get_string('mining_avr_connection_error')
