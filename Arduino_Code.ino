@@ -50,6 +50,21 @@ String get_DUCOID() {
 
 String DUCOID = "";
 
+void print_startup_info() {
+  Serial.print(F("Arch: "));
+  #if defined(ARDUINO_ARCH_RENESAS)
+    Serial.print(F("RENESAS/Cortex-M4F"));
+  #elif defined(ARDUINO_ARCH_AVR) || defined(ARDUINO_ARCH_MEGAAVR)
+    Serial.print(F("AVR"));
+  #else
+    Serial.print(F("Generic"));
+  #endif
+
+  Serial.print(F(" | F_CPU: "));
+  Serial.print(F_CPU / 1000000);
+  Serial.println(F(" MHz"));
+}
+
 void setup() {
   // Prepare built-in led pin as output
   pinMode(LED_BUILTIN, OUTPUT);
@@ -60,6 +75,8 @@ void setup() {
   while (!Serial)
     ;  // For Arduino Leonardo or any board with the ATmega32U4
   Serial.flush();
+
+  print_startup_info();
 }
 
 void lowercase_hex_to_bytes(char const * hexDigest, uint8_t * rawDigest) {
