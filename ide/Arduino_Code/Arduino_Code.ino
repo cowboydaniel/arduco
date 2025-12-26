@@ -102,44 +102,18 @@ void lowercase_hex_to_bytes(char const * hexDigest, uint8_t * rawDigest) {
   }
 }
 
-// Convert hex to 32-bit words for fast ARM comparison
-void lowercase_hex_to_words(char const * hexDigest, uint32_t * rawWords) {
-  for (uint8_t w = 0; w < 5; w++) {
-    uint32_t word = 0;
-    for (uint8_t b = 0; b < 4; b++) {
-      uint8_t i = (w * 4 + b) * 2;
-      uint8_t x = hexDigest[i];
-      uint8_t hi = x >> 6;
-      uint8_t r = ((x & 0xf) | (hi << 3)) + hi;
-
-      x = hexDigest[i + 1];
-      hi = x >> 6;
-
-      word = (word << 8) | ((r << 4) | (((x & 0xf) | (hi << 3)) + hi));
-    }
-    rawWords[w] = word;
-  }
-}
-
 // DUCO-S1A hasher
 uintDiff ducos1a(char const * prevBlockHash, char const * targetBlockHash, uintDiff difficulty) {
   #if defined(ARDUINO_ARCH_AVR) || defined(ARDUINO_ARCH_MEGAAVR)
     // If the difficulty is too high for AVR architecture then return 0
     if (difficulty > 655) return 0;
-    uint8_t target[SHA1_HASH_LEN];
-    lowercase_hex_to_bytes(targetBlockHash, target);
-  #else
-    // Use 32-bit words for fast comparison on ARM
-    uint32_t target32[5];
-    lowercase_hex_to_words(targetBlockHash, target32);
   #endif
 
+  uint8_t target[SHA1_HASH_LEN];
+  lowercase_hex_to_bytes(targetBlockHash, target);
+
   uintDiff const maxNonce = difficulty * 100 + 1;
-  #if defined(ARDUINO_ARCH_AVR) || defined(ARDUINO_ARCH_MEGAAVR)
-    return ducos1a_mine(prevBlockHash, target, maxNonce);
-  #else
-    return ducos1a_mine32(prevBlockHash, target32, maxNonce);
-  #endif
+  return ducos1a_mine(prevBlockHash, target, maxNonce);
 }
 
 static inline char * duco_fast_u32_to_str(uint32_t value, char * endPtr) {
@@ -191,60 +165,6 @@ uintDiff ducos1a_mine(char const * prevBlockHash, uint8_t const * target, uintDi
 
   return 0;
 }
-
-// Optimized 32-bit comparison version for ARM (5 word comparisons vs 20 byte comparisons)
-// Uses incrementing nonce string to avoid expensive division operations
-#if !defined(ARDUINO_ARCH_AVR) && !defined(ARDUINO_ARCH_MEGAAVR)
-
-uintDiff ducos1a_mine32(char const * prevBlockHash, uint32_t const * target32, uintDiff maxNonce) {
-  static duco_hash_state_t hash;
-  duco_hash_init(&hash, prevBlockHash);
-
-  uint32_t const t0 = target32[0];
-  uint32_t const t1 = target32[1];
-  uint32_t const t2 = target32[2];
-  uint32_t const t3 = target32[3];
-  uint32_t const t4 = target32[4];
-
-  // Incrementing nonce string - avoids division per iteration
-  char nonceStr[12] = "0";
-  uint8_t nonceLen = 1;
-
-  for (uintDiff nonce = 0; nonce < maxNonce; nonce++) {
-    uint32_t const * hash_words = duco_hash_try_nonce32(&hash, nonceStr, nonceLen);
-
-    // Fast 32-bit comparison: 5 word comparisons instead of 20 byte comparisons
-    if (hash_words[0] == t0 &&
-        hash_words[1] == t1 &&
-        hash_words[2] == t2 &&
-        hash_words[3] == t3 &&
-        hash_words[4] == t4) {
-      return nonce;
-    }
-
-    // Increment the nonce string (much faster than division for sequential nonces)
-    int8_t i = nonceLen - 1;
-    while (i >= 0) {
-      if (nonceStr[i] < '9') {
-        nonceStr[i]++;
-        break;
-      }
-      nonceStr[i] = '0';
-      i--;
-    }
-    if (i < 0) {
-      // All digits were 9, need to add new digit at front
-      for (int8_t j = nonceLen; j >= 0; j--) {
-        nonceStr[j + 1] = nonceStr[j];
-      }
-      nonceStr[0] = '1';
-      nonceLen++;
-    }
-  }
-
-  return 0;
-}
-#endif
 
 void loop() {
   // Wait for serial data
