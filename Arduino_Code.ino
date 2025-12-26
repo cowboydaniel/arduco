@@ -24,7 +24,7 @@ for default settings use -O0. -O may be a good tradeoff between both */
 #define SEP_TOKEN ","
 #define END_TOKEN "\n"
 #ifndef DUCO_SERIAL_BAUD
-#define DUCO_SERIAL_BAUD 500000
+#define DUCO_SERIAL_BAUD 115200
 #endif
 /* For 8-bit microcontrollers we should use 16 bit variables since the
 difficulty is low, for all the other cases should be 32 bits. */
