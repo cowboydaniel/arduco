@@ -1165,16 +1165,17 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
 
                 estimated_job_time = (diff * 100) / max(thread_hashrate, 1)
 
-                # If the estimated job time exceeds MAX_AVR_TIMEOUT, the difficulty
-                # is too high for this board. Fall back to DUE profile.
-                if estimated_job_time > Settings.MAX_AVR_TIMEOUT and start_diff == "RENESAS":
+                # Cap difficulty if it would take too long (keep RENESAS profile)
+                # This allows the board to search a smaller nonce range while
+                # the server adjusts difficulty over time
+                max_diff = int(thread_hashrate * Settings.MAX_AVR_TIMEOUT / 100)
+                if diff > max_diff:
                     pretty_print("sys" + port_num(com),
-                                 f"RENESAS difficulty {diff} too high "
-                                 + f"(estimated {round(estimated_job_time)}s), switching to DUE",
+                                 f"Capping RENESAS difficulty from {diff} to {max_diff} "
+                                 + f"(was {round(estimated_job_time)}s, now ~{Settings.MAX_AVR_TIMEOUT}s)",
                                  "warning")
-                    start_diff = "DUE"
-                    sleep(1)
-                    continue
+                    diff = max_diff
+                    estimated_job_time = Settings.MAX_AVR_TIMEOUT
 
                 # Cap the timeout to prevent extremely long waits
                 dynamic_timeout = min(Settings.MAX_AVR_TIMEOUT,
@@ -1201,7 +1202,7 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
                                         + Settings.SEPARATOR
                                         + job[1]
                                         + Settings.SEPARATOR
-                                        + job[2]
+                                        + str(diff)  # Use capped difficulty
                                         + Settings.SEPARATOR),
                                     encoding=Settings.ENCODING))
                     debug_output(com + ': Reading result from the board')
