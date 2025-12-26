@@ -1099,7 +1099,10 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
             break
 
         start_diff = "AVR"
-        if hashrate_test > 1000:
+        # Prioritize dedicated Renesas profile for R4 WiFi/Minima-class boards
+        if hashrate_test > 9000:
+            start_diff = "RENESAS"
+        elif hashrate_test > 4000:
             start_diff = "DUE"
         elif hashrate_test > 550:
             start_diff = "ARM"
