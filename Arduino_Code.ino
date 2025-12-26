@@ -15,13 +15,17 @@
 
 /* For microcontrollers with low memory change that to -Os in all files,
 for default settings use -O0. -O may be a good tradeoff between both */
-#pragma GCC optimize ("-Ofast")
+#pragma GCC optimize ("Ofast")
+#pragma GCC optimize ("unroll-loops")
 /* For microcontrollers with custom LED pins, adjust the line below */
 #ifndef LED_BUILTIN
 #define LED_BUILTIN 13
 #endif
 #define SEP_TOKEN ","
 #define END_TOKEN "\n"
+#ifndef DUCO_SERIAL_BAUD
+#define DUCO_SERIAL_BAUD 115200
+#endif
 /* For 8-bit microcontrollers we should use 16 bit variables since the
 difficulty is low, for all the other cases should be 32 bits. */
 #if defined(ARDUINO_ARCH_AVR) || defined(ARDUINO_ARCH_MEGAAVR)
@@ -51,7 +55,7 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   DUCOID = get_DUCOID();
   // Open serial port
-  Serial.begin(115200);
+  Serial.begin(DUCO_SERIAL_BAUD);
   Serial.setTimeout(10000);
   while (!Serial)
     ;  // For Arduino Leonardo or any board with the ATmega32U4
@@ -85,16 +89,48 @@ uintDiff ducos1a(char const * prevBlockHash, char const * targetBlockHash, uintD
   return ducos1a_mine(prevBlockHash, target, maxNonce);
 }
 
+static inline char * duco_fast_u32_to_str(uint32_t value, char * endPtr) {
+  char * cursor = endPtr;
+  *--cursor = 0;
+  do {
+    uint32_t const q = value / 10;
+    *--cursor = char('0' + (value - q * 10));
+    value = q;
+  } while (value);
+  return cursor;
+}
+
 uintDiff ducos1a_mine(char const * prevBlockHash, uint8_t const * target, uintDiff maxNonce) {
   static duco_hash_state_t hash;
   duco_hash_init(&hash, prevBlockHash);
 
-  char nonceStr[10 + 1];
-  for (uintDiff nonce = 0; nonce < maxNonce; nonce++) {
-    ultoa(nonce, nonceStr, 10);
+  char nonceStr[11 + 1];
+  char * const bufferEnd = nonceStr + sizeof(nonceStr);
 
-    uint8_t const * hash_bytes = duco_hash_try_nonce(&hash, nonceStr);
-    if (memcmp(hash_bytes, target, SHA1_HASH_LEN) == 0) {
+  for (uintDiff nonce = 0; nonce < maxNonce; nonce++) {
+    char * noncePtr = duco_fast_u32_to_str(nonce, bufferEnd);
+
+    uint8_t const * hash_bytes = duco_hash_try_nonce(&hash, noncePtr);
+    if (hash_bytes[0] == target[0] &&
+        hash_bytes[1] == target[1] &&
+        hash_bytes[2] == target[2] &&
+        hash_bytes[3] == target[3] &&
+        hash_bytes[4] == target[4] &&
+        hash_bytes[5] == target[5] &&
+        hash_bytes[6] == target[6] &&
+        hash_bytes[7] == target[7] &&
+        hash_bytes[8] == target[8] &&
+        hash_bytes[9] == target[9] &&
+        hash_bytes[10] == target[10] &&
+        hash_bytes[11] == target[11] &&
+        hash_bytes[12] == target[12] &&
+        hash_bytes[13] == target[13] &&
+        hash_bytes[14] == target[14] &&
+        hash_bytes[15] == target[15] &&
+        hash_bytes[16] == target[16] &&
+        hash_bytes[17] == target[17] &&
+        hash_bytes[18] == target[18] &&
+        hash_bytes[19] == target[19]) {
       return nonce;
     }
   }
