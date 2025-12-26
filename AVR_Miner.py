@@ -111,6 +111,7 @@ class Settings:
     SOC_TIMEOUT = 10
     REPORT_TIME = 300
     AVR_TIMEOUT = 10
+    MAX_AVR_TIMEOUT = 60  # Maximum serial timeout to prevent hanging on high difficulty jobs
     BAUDRATE = 115200
     DATA_DIR = "Duino-Coin AVR Miner " + str(VER)
     SEPARATOR = ","
@@ -1163,7 +1164,21 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
                     continue
 
                 estimated_job_time = (diff * 100) / max(thread_hashrate, 1)
-                dynamic_timeout = max(Settings.AVR_TIMEOUT, estimated_job_time * 1.2)
+
+                # If the estimated job time exceeds MAX_AVR_TIMEOUT, the difficulty
+                # is too high for this board. Fall back to DUE profile.
+                if estimated_job_time > Settings.MAX_AVR_TIMEOUT and start_diff == "RENESAS":
+                    pretty_print("sys" + port_num(com),
+                                 f"RENESAS difficulty {diff} too high "
+                                 + f"(estimated {round(estimated_job_time)}s), switching to DUE",
+                                 "warning")
+                    start_diff = "DUE"
+                    sleep(1)
+                    continue
+
+                # Cap the timeout to prevent extremely long waits
+                dynamic_timeout = min(Settings.MAX_AVR_TIMEOUT,
+                                      max(Settings.AVR_TIMEOUT, estimated_job_time * 1.2))
                 if ser.timeout != dynamic_timeout:
                     ser.timeout = dynamic_timeout
                     debug_output(com + f": Adjusted serial timeout to {round(dynamic_timeout, 2)}s")
