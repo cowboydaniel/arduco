@@ -8,7 +8,11 @@ void duco_hash_block(duco_hash_state_t * hasher) {
 	// NOTE: keeping this static improves performance quite a lot
 	static uint32_t w[16];
 
-	for (uint8_t i = 0, i4 = 0; i < 16; i++, i4 += 4) {
+	for (uint8_t i = 0; i < 10; i++) {
+		w[i] = hasher->base_words[i];
+	}
+
+	for (uint8_t i = 10, i4 = 40; i < 16; i++, i4 += 4) {
 		w[i] = (uint32_t(hasher->buffer[i4]) << 24) |
 			(uint32_t(hasher->buffer[i4 + 1]) << 16) |
 			(uint32_t(hasher->buffer[i4 + 2]) << 8) |
@@ -98,10 +102,12 @@ void duco_hash_init(duco_hash_state_t * hasher, char const * prevHash) {
 	static uint32_t w[10];
 
 	for (uint8_t i = 0, i4 = 0; i < 10; i++, i4 += 4) {
-		w[i] = (uint32_t(hasher->buffer[i4]) << 24) |
+		uint32_t const base_word = (uint32_t(hasher->buffer[i4]) << 24) |
 			(uint32_t(hasher->buffer[i4 + 1]) << 16) |
 			(uint32_t(hasher->buffer[i4 + 2]) << 8) |
 			(uint32_t(hasher->buffer[i4 + 3]));
+		w[i] = base_word;
+		hasher->base_words[i] = base_word;
 	}
 
 	for (uint8_t i = 0; i < 10; i++) {

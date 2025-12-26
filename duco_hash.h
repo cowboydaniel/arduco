@@ -6,6 +6,7 @@
 #define SHA1_HASH_LEN 20
 
 struct duco_hash_state_t {
+	uint32_t base_words[10];
 	uint8_t buffer[SHA1_BLOCK_LEN];
 	uint8_t result[SHA1_HASH_LEN];
 	uint32_t tempState[5];
