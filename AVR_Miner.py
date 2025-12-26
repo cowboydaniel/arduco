@@ -1099,7 +1099,9 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
             break
 
         start_diff = "AVR"
-        # Prioritize dedicated Renesas profile for R4 WiFi/Minima-class boards
+        # Prioritize dedicated Renesas profile for R4 WiFi/Minima-class boards.
+        # If the Renesas profile fails to deliver a valid job, we'll fall back
+        # to the previous DUE profile below.
         if hashrate_test > 9000:
             start_diff = "RENESAS"
         elif hashrate_test > 4000:
@@ -1111,6 +1113,7 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
         elif hashrate_test > 380:
             start_diff = "MEGA"
 
+        renesas_failures = 0
         pretty_print('sys' + port_num(com), 
                     get_string('hashrate_test') 
                     + get_prefix("H/s", hashrate_test, 2)
@@ -1118,6 +1121,7 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
                     + get_string('hashrate_test_diff') 
                     + start_diff)
 
+        thread_hashrate = hashrate_test
         while True:
             try:
                 if config["AVR Miner"]["mining_key"] != "None":
@@ -1139,10 +1143,30 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
 
                 try:
                     diff = int(job[2])
-                except:
+                except Exception:
                     pretty_print("sys" + port_num(com),
                                  f" Node message: {job[1]}", "warning")
+                    # Prefer keeping the Renesas profile for higher hashrate;
+                    # only fall back to DUE after a few consecutive failures.
+                    if start_diff == "RENESAS":
+                        renesas_failures += 1
+                        if renesas_failures >= 3:
+                            start_diff = "DUE"
+                            pretty_print("sys" + port_num(com),
+                                         "Renesas profile unavailable after 3 retries, switching to DUE",
+                                         "warning")
+                            sleep(1)
+                            continue
+                        sleep(1)
+                        continue
                     sleep(3)
+                    continue
+
+                estimated_job_time = (diff * 100) / max(thread_hashrate, 1)
+                dynamic_timeout = max(Settings.AVR_TIMEOUT, estimated_job_time * 1.2)
+                if ser.timeout != dynamic_timeout:
+                    ser.timeout = dynamic_timeout
+                    debug_output(com + f": Adjusted serial timeout to {round(dynamic_timeout, 2)}s")
             except Exception as e:
                 pretty_print('net' + port_num(com),
                              get_string('connecting_error')
@@ -1188,10 +1212,12 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
                 num_res = int(result[0], 2)
                 hashrate_t = round(num_res / computetime, 2)
 
+                thread_hashrate = hashrate_t or thread_hashrate
                 hashrate_mean.append(hashrate_t)
                 hashrate = mean(hashrate_mean)
                 hashrate_list[threadid] = hashrate
                 total_hashrate = sum(hashrate_list)
+                renesas_failures = 0
             except Exception as e:
                 pretty_print('sys' + port_num(com),
                              get_string('mining_avr_connection_error')
