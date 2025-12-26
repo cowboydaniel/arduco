@@ -1,10 +1,17 @@
 #include "duco_hash.h"
 
+#if defined(ARDUINO_ARCH_RENESAS)
+// Use aggressive tuning on Renesas RA (e.g., UNO R4 WiFi/Minima) to squeeze more hashrate
+#pragma GCC optimize ("Ofast","unroll-loops","tree-vectorize","rename-registers","inline-functions")
+#define DUCO_HOT_ATTR __attribute__((hot, flatten))
+#else
 #pragma GCC optimize ("-Ofast")
+#define DUCO_HOT_ATTR
+#endif
 
 #define sha1_rotl(bits,word)     (((word) << (bits)) | ((word) >> (32 - (bits))))
 
-void duco_hash_block(duco_hash_state_t * hasher) {
+DUCO_HOT_ATTR void duco_hash_block(duco_hash_state_t * hasher) {
 	// NOTE: keeping this static improves performance quite a lot
 	static uint32_t w[16];
 
@@ -133,7 +140,7 @@ void duco_hash_init(duco_hash_state_t * hasher, char const * prevHash) {
 	hasher->tempState[4] = e;
 }
 
-void duco_hash_set_nonce(duco_hash_state_t * hasher, char const * nonce, uint8_t nonce_len) {
+DUCO_HOT_ATTR void duco_hash_set_nonce(duco_hash_state_t * hasher, char const * nonce, uint8_t nonce_len) {
 	uint8_t * b = hasher->buffer;
 	uint8_t const base_off = SHA1_HASH_LEN * 2;
 
@@ -158,7 +165,7 @@ void duco_hash_set_nonce(duco_hash_state_t * hasher, char const * nonce, uint8_t
 	}
 }
 
-uint8_t const * duco_hash_try_nonce(duco_hash_state_t * hasher, char const * nonce, uint8_t nonce_len) {
+DUCO_HOT_ATTR uint8_t const * duco_hash_try_nonce(duco_hash_state_t * hasher, char const * nonce, uint8_t nonce_len) {
 	duco_hash_set_nonce(hasher, nonce, nonce_len);
 	duco_hash_block(hasher);
 
