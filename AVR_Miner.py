@@ -1104,6 +1104,8 @@ def mine_avr(com, threadid, fastest_pool, thread_rigid):
             start_diff = "RENESAS"
         elif hashrate_test > 4000:
             start_diff = "DUE"
+        elif hashrate_test > 1200:
+            start_diff = "RENESAS"
         elif hashrate_test > 550:
             start_diff = "ARM"
         elif hashrate_test > 380:
