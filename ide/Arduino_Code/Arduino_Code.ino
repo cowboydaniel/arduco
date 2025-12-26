@@ -196,44 +196,6 @@ uintDiff ducos1a_mine(char const * prevBlockHash, uint8_t const * target, uintDi
 // Uses incrementing nonce string to avoid expensive division operations
 #if !defined(ARDUINO_ARCH_AVR) && !defined(ARDUINO_ARCH_MEGAAVR)
 
-// Incrementing nonce string state - avoids division per iteration
-typedef struct {
-  char str[12];      // "0" to "4294967295" + null
-  uint8_t len;       // Current string length
-  uint8_t pos;       // Position of rightmost digit
-} nonce_str_state_t;
-
-static inline void nonce_str_init(nonce_str_state_t * s) {
-  s->str[0] = '0';
-  s->str[1] = '\0';
-  s->len = 1;
-  s->pos = 0;
-}
-
-// Increment the nonce string - much faster than division for sequential nonces
-static inline void nonce_str_inc(nonce_str_state_t * s) {
-  int8_t i = s->pos;
-
-  // Increment from rightmost digit
-  while (i >= 0) {
-    if (s->str[i] < '9') {
-      s->str[i]++;
-      return;
-    }
-    s->str[i] = '0';
-    i--;
-  }
-
-  // All digits were 9, need to add new digit at front
-  // Shift everything right and add '1' at front
-  for (int8_t j = s->len; j >= 0; j--) {
-    s->str[j + 1] = s->str[j];
-  }
-  s->str[0] = '1';
-  s->len++;
-  s->pos++;
-}
-
 uintDiff ducos1a_mine32(char const * prevBlockHash, uint32_t const * target32, uintDiff maxNonce) {
   static duco_hash_state_t hash;
   duco_hash_init(&hash, prevBlockHash);
@@ -244,11 +206,12 @@ uintDiff ducos1a_mine32(char const * prevBlockHash, uint32_t const * target32, u
   uint32_t const t3 = target32[3];
   uint32_t const t4 = target32[4];
 
-  nonce_str_state_t nonceState;
-  nonce_str_init(&nonceState);
+  // Incrementing nonce string - avoids division per iteration
+  char nonceStr[12] = "0";
+  uint8_t nonceLen = 1;
 
   for (uintDiff nonce = 0; nonce < maxNonce; nonce++) {
-    uint32_t const * hash_words = duco_hash_try_nonce32(&hash, nonceState.str, nonceState.len);
+    uint32_t const * hash_words = duco_hash_try_nonce32(&hash, nonceStr, nonceLen);
 
     // Fast 32-bit comparison: 5 word comparisons instead of 20 byte comparisons
     if (hash_words[0] == t0 &&
@@ -259,7 +222,24 @@ uintDiff ducos1a_mine32(char const * prevBlockHash, uint32_t const * target32, u
       return nonce;
     }
 
-    nonce_str_inc(&nonceState);
+    // Increment the nonce string (much faster than division for sequential nonces)
+    int8_t i = nonceLen - 1;
+    while (i >= 0) {
+      if (nonceStr[i] < '9') {
+        nonceStr[i]++;
+        break;
+      }
+      nonceStr[i] = '0';
+      i--;
+    }
+    if (i < 0) {
+      // All digits were 9, need to add new digit at front
+      for (int8_t j = nonceLen; j >= 0; j--) {
+        nonceStr[j + 1] = nonceStr[j];
+      }
+      nonceStr[0] = '1';
+      nonceLen++;
+    }
   }
 
   return 0;
