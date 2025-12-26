@@ -126,8 +126,9 @@ uintDiff ducos1a_mine(char const * prevBlockHash, uint8_t const * target, uintDi
 
   for (uintDiff nonce = 0; nonce < maxNonce; nonce++) {
     char * noncePtr = duco_fast_u32_to_str(nonce, bufferEnd);
+    uint8_t const nonce_len = uint8_t((bufferEnd - 1) - noncePtr);
 
-    uint8_t const * hash_bytes = duco_hash_try_nonce(&hash, noncePtr);
+    uint8_t const * hash_bytes = duco_hash_try_nonce(&hash, noncePtr, nonce_len);
     if (hash_bytes[0] == target[0] &&
         hash_bytes[1] == target[1] &&
         hash_bytes[2] == target[2] &&

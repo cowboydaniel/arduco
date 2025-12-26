@@ -8,7 +8,11 @@ void duco_hash_block(duco_hash_state_t * hasher) {
 	// NOTE: keeping this static improves performance quite a lot
 	static uint32_t w[16];
 
-	for (uint8_t i = 0, i4 = 0; i < 16; i++, i4 += 4) {
+	for (uint8_t i = 0; i < 10; i++) {
+		w[i] = hasher->base_words[i];
+	}
+
+	for (uint8_t i = 10, i4 = 40; i < 16; i++, i4 += 4) {
 		w[i] = (uint32_t(hasher->buffer[i4]) << 24) |
 			(uint32_t(hasher->buffer[i4 + 1]) << 16) |
 			(uint32_t(hasher->buffer[i4 + 2]) << 8) |
@@ -98,11 +102,17 @@ void duco_hash_init(duco_hash_state_t * hasher, char const * prevHash) {
 	static uint32_t w[10];
 
 	for (uint8_t i = 0, i4 = 0; i < 10; i++, i4 += 4) {
-		w[i] = (uint32_t(hasher->buffer[i4]) << 24) |
+		uint32_t const base_word = (uint32_t(hasher->buffer[i4]) << 24) |
 			(uint32_t(hasher->buffer[i4 + 1]) << 16) |
 			(uint32_t(hasher->buffer[i4 + 2]) << 8) |
 			(uint32_t(hasher->buffer[i4 + 3]));
+		w[i] = base_word;
+		hasher->base_words[i] = base_word;
 	}
+	for (uint8_t i = 40; i < SHA1_BLOCK_LEN; i++) {
+		hasher->buffer[i] = 0;
+	}
+	hasher->prev_nonce_len = 0;
 
 	for (uint8_t i = 0; i < 10; i++) {
 		uint32_t temp = sha1_rotl(5, a) + e + w[i & 15];
@@ -123,27 +133,33 @@ void duco_hash_init(duco_hash_state_t * hasher, char const * prevHash) {
 	hasher->tempState[4] = e;
 }
 
-void duco_hash_set_nonce(duco_hash_state_t * hasher, char const * nonce) {
+void duco_hash_set_nonce(duco_hash_state_t * hasher, char const * nonce, uint8_t nonce_len) {
 	uint8_t * b = hasher->buffer;
+	uint8_t const base_off = SHA1_HASH_LEN * 2;
 
-	uint8_t off = SHA1_HASH_LEN * 2;
-	for (uint8_t i = 0; i < 10 && nonce[i] != 0; i++) {
-		b[off++] = nonce[i];
+	for (uint8_t i = 0; i < nonce_len; i++) {
+		b[base_off + i] = nonce[i];
 	}
 
-	uint8_t total_bytes = off;
+	if (nonce_len != hasher->prev_nonce_len) {
+		uint8_t const old_pad_pos = base_off + hasher->prev_nonce_len;
+		for (uint8_t i = old_pad_pos; i < 62; i++) {
+			b[i] = 0;
+		}
 
-	b[off++] = 0x80;
-	while (off < 62) {
-		b[off++] = 0;
+		uint8_t const total_bytes = base_off + nonce_len;
+		uint8_t const pad_pos = total_bytes;
+
+		b[pad_pos] = 0x80;
+		b[62] = total_bytes >> 5;
+		b[63] = total_bytes << 3;
+
+		hasher->prev_nonce_len = nonce_len;
 	}
-
-	b[62] = total_bytes >> 5;
-	b[63] = total_bytes << 3;
 }
 
-uint8_t const * duco_hash_try_nonce(duco_hash_state_t * hasher, char const * nonce) {
-	duco_hash_set_nonce(hasher, nonce);
+uint8_t const * duco_hash_try_nonce(duco_hash_state_t * hasher, char const * nonce, uint8_t nonce_len) {
+	duco_hash_set_nonce(hasher, nonce, nonce_len);
 	duco_hash_block(hasher);
 
 	return hasher->result;
